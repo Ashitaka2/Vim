@@ -95,6 +95,11 @@ def train_one_epoch(model: torch.nn.Module, criterion: DistillationLoss,
 
         metric_logger.update(loss=loss_value)
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
+        
+        # print(torch.cuda.memory_stats())
+        # print(torch.cuda.memory_snapshot())
+    
+            
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)
@@ -110,7 +115,6 @@ def evaluate(data_loader, model, device, amp_autocast):
 
     # switch to evaluation mode
     model.eval()
-
     for images, target in metric_logger.log_every(data_loader, 10, header):
         images = images.to(device, non_blocking=True)
         target = target.to(device, non_blocking=True)

@@ -10,6 +10,7 @@ import os
 import time
 from collections import defaultdict, deque
 import datetime
+import psutil
 
 import torch
 import torch.distributed as dist
@@ -130,7 +131,11 @@ class MetricLogger(object):
             'data: {data}'
         ]
         if torch.cuda.is_available():
-            log_msg.append('max mem: {memory:.0f}')
+            log_msg.append('max gpu mem: {max_memory:.0f}')
+            log_msg.append('cpu util: {cpu_util:.0f}')
+            log_msg.append('cpu ram: {cpu_ram:.0f}')
+        
+            
         log_msg = self.delimiter.join(log_msg)
         MB = 1024.0 * 1024.0
         for obj in iterable:
@@ -145,7 +150,10 @@ class MetricLogger(object):
                         i, len(iterable), eta=eta_string,
                         meters=str(self),
                         time=str(iter_time), data=str(data_time),
-                        memory=torch.cuda.max_memory_allocated() / MB))
+                        cpu_util=psutil.cpu_percent(interval=1),
+                        cpu_ram=psutil.virtual_memory().percent,
+                        max_memory=torch.cuda.max_memory_allocated() / MB))
+                    torch.cuda.reset_peak_memory_stats()
                 else:
                     print(log_msg.format(
                         i, len(iterable), eta=eta_string,

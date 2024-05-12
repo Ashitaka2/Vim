@@ -296,7 +296,7 @@ class VisionMamba(nn.Module):
             self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + self.num_tokens, self.embed_dim))
             self.pos_drop = nn.Dropout(p=drop_rate)
 
-        if if_rope:
+        if if_rope: 
             half_head_dim = embed_dim // 2
             hw_seq_len = img_size // patch_size
             self.rope = VisionRotaryEmbeddingFast(
@@ -381,7 +381,7 @@ class VisionMamba(nn.Module):
         # taken from https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/vision_transformer.py
         # with slight modifications to add the dist_token
         x = self.patch_embed(x)
-        B, M, _ = x.shape
+        B, M, _ = x.shape # B, N(height*width flatten), C(embed_dim)
 
         if self.if_cls_token:
             if self.use_double_cls_token:
@@ -419,7 +419,7 @@ class VisionMamba(nn.Module):
 
         if if_random_token_rank:
 
-            # 生成随机 shuffle 索引
+            # Generate random shuffle indices
             shuffle_indices = torch.randperm(M)
 
             if isinstance(token_position, list):
@@ -428,11 +428,11 @@ class VisionMamba(nn.Module):
                 print("original value: ", x[0, token_position, 0])
             print("original token_position: ", token_position)
 
-            # 执行 shuffle
+            # Perform shuffle
             x = x[:, shuffle_indices, :]
 
             if isinstance(token_position, list):
-                # 找到 cls token 在 shuffle 之后的新位置
+                # Find the new position of the cls token after shuffle
                 new_token_position = [torch.where(shuffle_indices == token_position[i])[0].item() for i in range(len(token_position))]
                 token_position = new_token_position
             else:
@@ -445,9 +445,6 @@ class VisionMamba(nn.Module):
                 print("new value: ", x[0, token_position, 0])
             print("new token_position: ", token_position)
 
-
-
-
         if_flip_img_sequences = False
         if self.flip_img_sequences_ratio > 0 and (self.flip_img_sequences_ratio - random.random()) > 1e-5:
             x = x.flip([1])
@@ -458,7 +455,6 @@ class VisionMamba(nn.Module):
         hidden_states = x
         if not self.if_bidirectional:
             for layer in self.layers:
-
                 if if_flip_img_sequences and self.if_rope:
                     hidden_states = hidden_states.flip([1])
                     if residual is not None:
@@ -486,10 +482,10 @@ class VisionMamba(nn.Module):
                     if residual is not None and self.if_rope_residual:
                         residual = self.rope(residual)
 
-                hidden_states_f, residual_f = self.layers[i * 2](
+                hidden_states_f, residual_f = self.layers[i * 2]( #정방향
                     hidden_states, residual, inference_params=inference_params
                 )
-                hidden_states_b, residual_b = self.layers[i * 2 + 1](
+                hidden_states_b, residual_b = self.layers[i * 2 + 1]( #역방향
                     hidden_states.flip([1]), None if residual == None else residual.flip([1]), inference_params=inference_params
                 )
                 hidden_states = hidden_states_f + hidden_states_b.flip([1])
@@ -538,7 +534,7 @@ class VisionMamba(nn.Module):
             raise NotImplementedError
 
     def forward(self, x, return_features=False, inference_params=None, if_random_cls_token_position=False, if_random_token_rank=False):
-        x = self.forward_features(x, inference_params, if_random_cls_token_position=if_random_cls_token_position, if_random_token_rank=if_random_token_rank)
+        x = self.forward_features(x, inference_params, if_random_cls_token_position=if_random_cls_token_position, if_random_token_rank=if_random_token_rank) #
         if return_features:
             return x
         x = self.head(x)
@@ -559,6 +555,60 @@ def vim_tiny_patch16_224_bimambav2_final_pool_mean_abs_pos_embed_with_midclstok_
         )
         model.load_state_dict(checkpoint["model"])
     return model
+
+@register_model # patch 조정
+def vim_tiny_patch1_224_bimambav2_final_pool_mean_abs_pos_embed_with_midclstok_div2(pretrained=False, **kwargs):
+    model = VisionMamba(
+        patch_size=1, stride=1, embed_dim=192, depth=24, rms_norm=True, residual_in_fp32=True, fused_add_norm=True, final_pool_type='mean', if_abs_pos_embed=True, if_rope=False, if_rope_residual=False, bimamba_type="v2", if_cls_token=True, if_devide_out=True, use_middle_cls_token=True, **kwargs)
+    model.default_cfg = _cfg()
+    if pretrained:
+        checkpoint = torch.hub.load_state_dict_from_url(
+            url="to.do",
+            map_location="cpu", check_hash=True
+        )
+        model.load_state_dict(checkpoint["model"])
+    return model
+
+
+@register_model # patch 16 & depth 조정
+def vim_tiny_patch16_depth6_224_bimambav2_final_pool_mean_abs_pos_embed_with_midclstok_div2(pretrained=False, **kwargs):
+    model = VisionMamba(
+        patch_size=16, stride=16, embed_dim=192, depth=6, rms_norm=True, residual_in_fp32=True, fused_add_norm=True, final_pool_type='mean', if_abs_pos_embed=True, if_rope=False, if_rope_residual=False, bimamba_type="v2", if_cls_token=True, if_devide_out=True, use_middle_cls_token=True, **kwargs)
+    model.default_cfg = _cfg()
+    if pretrained:
+        checkpoint = torch.hub.load_state_dict_from_url(
+            url="to.do",
+            map_location="cpu", check_hash=True
+        )
+        model.load_state_dict(checkpoint["model"])
+    return model
+
+@register_model # patch 8 & depth 조정
+def vim_tiny_patch8_depth2_224_bimambav2_final_pool_mean_abs_pos_embed_with_midclstok_div2(pretrained=False, **kwargs):
+    model = VisionMamba(
+        patch_size=8, stride=8, embed_dim=192, depth=2, rms_norm=True, residual_in_fp32=True, fused_add_norm=True, final_pool_type='mean', if_abs_pos_embed=True, if_rope=False, if_rope_residual=False, bimamba_type="v2", if_cls_token=True, if_devide_out=True, use_middle_cls_token=True, **kwargs)
+    model.default_cfg = _cfg()
+    if pretrained:
+        checkpoint = torch.hub.load_state_dict_from_url(
+            url="to.do",
+            map_location="cpu", check_hash=True
+        )
+        model.load_state_dict(checkpoint["model"])
+    return model
+
+@register_model # patch 32 & depth 조정
+def vim_tiny_patch32_depth24_224_bimambav2_final_pool_mean_abs_pos_embed_with_midclstok_div2(pretrained=False, **kwargs):
+    model = VisionMamba(
+        patch_size=32, stride=32, embed_dim=192, depth=24, rms_norm=True, residual_in_fp32=True, fused_add_norm=True, final_pool_type='mean', if_abs_pos_embed=True, if_rope=False, if_rope_residual=False, bimamba_type="v2", if_cls_token=True, if_devide_out=True, use_middle_cls_token=True, **kwargs)
+    model.default_cfg = _cfg()
+    if pretrained:
+        checkpoint = torch.hub.load_state_dict_from_url(
+            url="to.do",
+            map_location="cpu", check_hash=True
+        )
+        model.load_state_dict(checkpoint["model"])
+    return model
+
 
 @register_model
 def vim_tiny_patch16_stride8_224_bimambav2_final_pool_mean_abs_pos_embed_with_midclstok_div2(pretrained=False, **kwargs):

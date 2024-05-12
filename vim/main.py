@@ -308,6 +308,48 @@ def main(args):
         img_size=args.input_size
     )
 
+    # monitor model's parameter count.
+    # print(f"{'Module Name':<30}{'Parameter Count'}")
+    # print('-' * 50)
+    # for name, module in model.named_modules():
+    #     num_params = sum(p.numel() for p in module.parameters(recurse=False))
+    #     if num_params > 0:
+    #         print(f"{name:<30}{num_params}")
+    
+    # monitor model's parameter count
+    # module_specs = {"Modules": []}
+    # for name, module in model.named_modules():
+    #     num_params = sum(p.numel() for p in module.parameters(recurse=True))
+    #     # if num_params > 0:
+    #     module_specs["Modules"].append({"Module Name": name, "Parameter Count": num_params})
+
+    # # Calculate the total number of parameters in the entire model
+    # total_params = sum(p.numel() for p in model.parameters())
+    # module_specs["Total Parameters"] = total_params
+    
+    
+    # # Save the module specifications to a JSON file
+    # with open(output_dir / "model_summary.json", "w") as f:
+    #     json.dump(module_specs, f, indent=4)
+    
+    # monitor model's structure
+    # for name, module in model.named_modules():        
+    #     print(f"[ Name ] : {name}\n[ Module ]\n{module}")
+    #     print("-" * 30)
+    output_dir = Path(args.output_dir)
+    # with open(output_dir / "module_structure.txt", "w") as f:
+    #     for name, module in model.named_modules():
+    #         f.write(f"[ Name ] : {name}\n")
+    #         f.write(f"[ Module ]\n{module}\n")
+    #         num_params = sum(p.numel() for p in module.parameters(recurse=True) if p.requires_grad) #recurse : root의 param을 셀 때 nested module parameter들을 포함할 것인지의 여부
+    #         if num_params > 0:
+    #             f.write(f"[ Parameters ] : {num_params}\n")
+    #         f.write("-" * 30 + "\n")
+
+    # if args.output_dir and utils.is_main_process():
+    #     with (output_dir / "log.txt").open("a") as f:
+    #         f.write(json.dumps(log_stats) + "\n")
+    
                     
     if args.finetune:
         if args.finetune.startswith('https'):
@@ -369,6 +411,14 @@ def main(args):
             
     model.to(device)
 
+    # Model Summary 출력
+    # from torchsummary import summary
+    # summary(model, input_size=(3, 224, 224), batch_size = args.batch_size)
+
+    # if torch.cuda.is_available():
+    #     print(torch.cuda.current_device())
+    #     print(torch.cuda.memory_summary())
+    
     model_ema = None
     if args.model_ema:
         # Important to create EMA model after cuda(), DP wrapper, and AMP but before SyncBN and DDP wrapper
@@ -461,7 +511,7 @@ def main(args):
         test_stats = evaluate(data_loader_val, model, device, amp_autocast)
         print(f"Accuracy of the network on the {len(dataset_val)} test images: {test_stats['acc1']:.1f}%")
         return
-    
+
     # log about
     if args.local_rank == 0 and args.gpu == 0:
         mlflow.log_param("n_parameters", n_parameters)
@@ -480,7 +530,10 @@ def main(args):
             set_training_mode=args.train_mode,  # keep in eval mode for deit finetuning / train mode for training and deit III finetuning
             args=args,
         )
-
+        
+        if torch.cuda.is_available():
+            print(torch.cuda.memory_summary())
+            
         lr_scheduler.step(epoch)
         if args.output_dir:
             checkpoint_paths = [output_dir / 'checkpoint.pth']
@@ -516,21 +569,39 @@ def main(args):
             
         print(f'Max accuracy: {max_accuracy:.2f}%')
 
+        
+        # Log the Training Progress
         log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
                      **{f'test_{k}': v for k, v in test_stats.items()},
                      'epoch': epoch,
                      'n_parameters': n_parameters}
         
+        # .xlsx file preparation
+        import pandas as pd
+        def append_dict_to_excel(file, dict_data, sheet_name='Sheet1'):
+            try:
+                with pd.ExcelWriter(file, engine='openpyxl', mode='a', if_sheet_exists='overlay') as writer:
+                    old_df = pd.read_excel(file, sheet_name=sheet_name)
+                    new_df = pd.DataFrame([dict_data])
+                    df = pd.concat([old_df, new_df], ignore_index=True)
+                    df.to_excel(writer, sheet_name=sheet_name, index=False)
+            except FileNotFoundError:
+                with pd.ExcelWriter(file, engine='openpyxl', mode='w') as writer:
+                    df = pd.DataFrame([dict_data])
+                    df.to_excel(writer, sheet_name=sheet_name, index=False)
+        
         # log about
         if args.local_rank == 0 and args.gpu == 0:
             for key, value in log_stats.items():
                 mlflow.log_metric(key, value, log_stats['epoch'])
-        
-        
+                
+                
         if args.output_dir and utils.is_main_process():
             with (output_dir / "log.txt").open("a") as f:
                 f.write(json.dumps(log_stats) + "\n")
-
+            append_dict_to_excel(output_dir / "log.xlsx", log_stats)
+            
+            
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     print('Training time {}'.format(total_time_str))

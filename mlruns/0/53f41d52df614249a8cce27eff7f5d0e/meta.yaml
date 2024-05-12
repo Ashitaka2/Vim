@@ -1,0 +1,15 @@
+artifact_uri: file:///extdata2/jaesungpark/Vim/mlruns/0/53f41d52df614249a8cce27eff7f5d0e/artifacts
+end_time: 1715073796368
+entry_point_name: ''
+experiment_id: '0'
+lifecycle_stage: active
+run_id: 53f41d52df614249a8cce27eff7f5d0e
+run_name: test1
+run_uuid: 53f41d52df614249a8cce27eff7f5d0e
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1715069519188
+status: 3
+tags: []
+user_id: jaesungpark
