@@ -62,6 +62,31 @@ class PatchEmbed(nn.Module):
         x = self.norm(x)
         return x
     
+class HC_PatchEmbed(nn.Module):
+    """ 2D Image to Patch Embedding
+    """
+    def __init__(self, img_size=224, patch_size=16, stride=16, in_chans=3, embed_dim=768, norm_layer=None, flatten=True):
+        super().__init__()
+        img_size = to_2tuple(img_size)
+        patch_size = to_2tuple(patch_size)
+        self.img_size = img_size
+        self.patch_size = patch_size
+        self.grid_size = ((img_size[0] - patch_size[0]) // stride + 1, (img_size[1] - patch_size[1]) // stride + 1)
+        self.num_patches = self.grid_size[0] * self.grid_size[1]
+        self.flatten = flatten
+
+        self.proj = nn.Conv2d(in_chans, embed_dim, kernel_size=patch_size, stride=stride)
+        self.norm = norm_layer(embed_dim) if norm_layer else nn.Identity()
+
+    def forward(self, x):
+        B, C, H, W = x.shape
+        assert H == self.img_size[0] and W == self.img_size[1], \
+            f"Input image size ({H}*{W}) doesn't match model ({self.img_size[0]}*{self.img_size[1]})."
+        x = self.proj(x)
+        if self.flatten:
+            x = x.flatten(2).transpose(1, 2)  # BCHW -> BNC
+        x = self.norm(x)
+        return x
 
 class Block(nn.Module):
     def __init__(
@@ -381,7 +406,14 @@ class VisionMamba(nn.Module):
         # taken from https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/vision_transformer.py
         # with slight modifications to add the dist_token
         x = self.patch_embed(x)
-        B, M, _ = x.shape # B, N(height*width flatten), C(embed_dim)
+        
+        # for prob=1/2, divide the sequence length by 4
+        # import random
+        # if random.random() > 1/2 :
+        #     x = x.view(x.size(0), x.size(1)//4, 4, x.size(2))
+        #     x = x.mean(dim=2)
+        
+        B, M, _ = x.shape # B, M(height*width flatten = seq_length), C(embed_dim)
 
         if self.if_cls_token:
             if self.use_double_cls_token:
@@ -556,24 +588,10 @@ def vim_tiny_patch16_224_bimambav2_final_pool_mean_abs_pos_embed_with_midclstok_
         model.load_state_dict(checkpoint["model"])
     return model
 
-@register_model # patch 조정
-def vim_tiny_patch1_224_bimambav2_final_pool_mean_abs_pos_embed_with_midclstok_div2(pretrained=False, **kwargs):
+@register_model #sequence random mixing
+def vim_tiny_patch16_224_seq_mix(pretrained=False, **kwargs):
     model = VisionMamba(
-        patch_size=1, stride=1, embed_dim=192, depth=24, rms_norm=True, residual_in_fp32=True, fused_add_norm=True, final_pool_type='mean', if_abs_pos_embed=True, if_rope=False, if_rope_residual=False, bimamba_type="v2", if_cls_token=True, if_devide_out=True, use_middle_cls_token=True, **kwargs)
-    model.default_cfg = _cfg()
-    if pretrained:
-        checkpoint = torch.hub.load_state_dict_from_url(
-            url="to.do",
-            map_location="cpu", check_hash=True
-        )
-        model.load_state_dict(checkpoint["model"])
-    return model
-
-
-@register_model # patch 16 & depth 조정
-def vim_tiny_patch16_depth6_224_bimambav2_final_pool_mean_abs_pos_embed_with_midclstok_div2(pretrained=False, **kwargs):
-    model = VisionMamba(
-        patch_size=16, stride=16, embed_dim=192, depth=6, rms_norm=True, residual_in_fp32=True, fused_add_norm=True, final_pool_type='mean', if_abs_pos_embed=True, if_rope=False, if_rope_residual=False, bimamba_type="v2", if_cls_token=True, if_devide_out=True, use_middle_cls_token=True, **kwargs)
+        patch_size=16, embed_dim=192, depth=2, rms_norm=True, residual_in_fp32=True, fused_add_norm=True, final_pool_type='mean', if_abs_pos_embed=False, if_rope=False, if_rope_residual=False, bimamba_type="v2", if_cls_token=True, if_devide_out=True, use_middle_cls_token=True, **kwargs)
     model.default_cfg = _cfg()
     if pretrained:
         checkpoint = torch.hub.load_state_dict_from_url(
@@ -596,10 +614,10 @@ def vim_tiny_patch8_depth2_224_bimambav2_final_pool_mean_abs_pos_embed_with_midc
         model.load_state_dict(checkpoint["model"])
     return model
 
-@register_model # patch 32 & depth 조정
-def vim_tiny_patch32_depth24_224_bimambav2_final_pool_mean_abs_pos_embed_with_midclstok_div2(pretrained=False, **kwargs):
+@register_model # patch 16 & depth 조정
+def vim_tiny_patch16_depth6_224_bimambav2_final_pool_mean_abs_pos_embed_with_midclstok_div2(pretrained=False, **kwargs):
     model = VisionMamba(
-        patch_size=32, stride=32, embed_dim=192, depth=24, rms_norm=True, residual_in_fp32=True, fused_add_norm=True, final_pool_type='mean', if_abs_pos_embed=True, if_rope=False, if_rope_residual=False, bimamba_type="v2", if_cls_token=True, if_devide_out=True, use_middle_cls_token=True, **kwargs)
+        patch_size=16, stride=16, embed_dim=192, depth=6, rms_norm=True, residual_in_fp32=True, fused_add_norm=True, final_pool_type='mean', if_abs_pos_embed=True, if_rope=False, if_rope_residual=False, bimamba_type="v2", if_cls_token=True, if_devide_out=True, use_middle_cls_token=True, **kwargs)
     model.default_cfg = _cfg()
     if pretrained:
         checkpoint = torch.hub.load_state_dict_from_url(
@@ -609,8 +627,20 @@ def vim_tiny_patch32_depth24_224_bimambav2_final_pool_mean_abs_pos_embed_with_mi
         model.load_state_dict(checkpoint["model"])
     return model
 
+@register_model # patch 32 & depth 조정
+def vim_tiny_patch32_depth2_224_bimambav2_final_pool_mean_abs_pos_embed_with_midclstok_div2(pretrained=False, **kwargs):
+    model = VisionMamba(
+        patch_size=32, stride=32, embed_dim=192, depth=2, rms_norm=True, residual_in_fp32=True, fused_add_norm=True, final_pool_type='mean', if_abs_pos_embed=True, if_rope=False, if_rope_residual=False, bimamba_type="v2", if_cls_token=True, if_devide_out=True, use_middle_cls_token=True, **kwargs)
+    model.default_cfg = _cfg()
+    if pretrained:
+        checkpoint = torch.hub.load_state_dict_from_url(
+            url="to.do",
+            map_location="cpu", check_hash=True
+        )
+        model.load_state_dict(checkpoint["model"])
+    return model
 
-@register_model
+@register_model # Fine-tune with longer sequence
 def vim_tiny_patch16_stride8_224_bimambav2_final_pool_mean_abs_pos_embed_with_midclstok_div2(pretrained=False, **kwargs):
     model = VisionMamba(
         patch_size=16, stride=8, embed_dim=192, depth=24, rms_norm=True, residual_in_fp32=True, fused_add_norm=True, final_pool_type='mean', if_abs_pos_embed=True, if_rope=False, if_rope_residual=False, bimamba_type="v2", if_cls_token=True, if_devide_out=True, use_middle_cls_token=True, **kwargs)
